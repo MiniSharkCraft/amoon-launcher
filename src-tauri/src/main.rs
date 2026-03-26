@@ -7,6 +7,7 @@ mod download;
 mod launcher;
 mod mods;
 mod system_check;
+mod files;
 
 fn main() {
     tauri::Builder::default()
@@ -35,6 +36,13 @@ fn main() {
 
             // System
             system_check::check_system,
+
+            // Files
+            files::list_dir_files,
+            files::read_text_file,
+            files::read_image_base64,
+            files::delete_file,
+            files::open_path,
 
             // Mods
             mods::search_modrinth,

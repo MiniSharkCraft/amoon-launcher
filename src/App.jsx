@@ -15,11 +15,13 @@ import {
   CircleNotch, SignIn,
   House, PuzzlePiece, UserCircle,
   ArrowSquareOut, Broom, Crown,
-  Tag, Fire,
+  Tag, Fire, FolderOpen, Camera,
 } from "@phosphor-icons/react";
 import useStore from "./store";
 import InstallWizard from "./components/InstallWizard";
 import LoginModal from "./components/LoginModal";
+import FileManagerPanel from "./panels/FileManagerPanel";
+import ScreenshotsPanel from "./panels/ScreenshotsPanel";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -518,11 +520,13 @@ export default function App() {
   };
 
   const NAV = [
-    { id:"home",     label:"Home",     icon:<House size={16} weight="duotone"/> },
-    { id:"mods",     label:"Mods",     icon:<PuzzlePiece size={16} weight="duotone"/> },
-    { id:"accounts", label:"Accounts", icon:<Users size={16} weight="duotone"/> },
-    { id:"console",  label:"Console",  icon:<Terminal size={16} weight="duotone"/>, badge: consoleLogs.length>0 },
-    { id:"settings", label:"Settings", icon:<GearSix size={16} weight="duotone"/> },
+    { id:"home",        label:"Home",        icon:<House       size={16} weight="duotone"/> },
+    { id:"mods",        label:"Mods",        icon:<PuzzlePiece size={16} weight="duotone"/> },
+    { id:"files",       label:"Files",       icon:<FolderOpen  size={16} weight="duotone"/> },
+    { id:"screenshots", label:"Screenshots", icon:<Camera      size={16} weight="duotone"/> },
+    { id:"accounts",    label:"Accounts",    icon:<Users       size={16} weight="duotone"/> },
+    { id:"console",     label:"Console",     icon:<Terminal    size={16} weight="duotone"/>, badge: consoleLogs.length>0 },
+    { id:"settings",    label:"Settings",    icon:<GearSix     size={16} weight="duotone"/> },
   ];
 
   return (
@@ -609,11 +613,13 @@ export default function App() {
 
         {/* ── Content ───────────────────────────────────────── */}
         <div style={{ flex:1, overflow:"hidden" }}>
-          {activePanel==="home"     && <HomeContent onEditInst={setEditInst}/>}
-          {activePanel==="mods"     && <ModsPanel/>}
-          {activePanel==="accounts" && <AccountsPanel onAddAccount={()=>setShowLogin(true)}/>}
-          {activePanel==="console"  && <ConsolePanel/>}
-          {activePanel==="settings" && <SettingsPanel/>}
+          {activePanel==="home"        && <HomeContent onEditInst={setEditInst}/>}
+          {activePanel==="mods"        && <ModsPanel/>}
+          {activePanel==="files"       && <FileManagerPanel/>}
+          {activePanel==="screenshots" && <ScreenshotsPanel/>}
+          {activePanel==="accounts"    && <AccountsPanel onAddAccount={()=>setShowLogin(true)}/>}
+          {activePanel==="console"     && <ConsolePanel/>}
+          {activePanel==="settings"    && <SettingsPanel/>}
         </div>
       </div>
 

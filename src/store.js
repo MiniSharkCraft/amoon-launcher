@@ -459,6 +459,26 @@ const useStore = create((set, get) => ({
     }
   },
 
+  // ─── Files / File Manager ────────────────────────────────
+  listDirFiles: async (dirPath, extensions = [], includeDirs = false) => {
+    try { return await invoke("list_dir_files", { dirPath, extensions, includeDirs }); }
+    catch { return []; }
+  },
+  readTextFile: async (filePath) => {
+    try { return await invoke("read_text_file", { filePath }); }
+    catch { return ""; }
+  },
+  readImageBase64: async (filePath) => {
+    try { return await invoke("read_image_base64", { filePath }); }
+    catch { return null; }
+  },
+  deleteFile: async (filePath) => {
+    return await invoke("delete_file", { filePath });
+  },
+  openPath: async (path) => {
+    await invoke("open_path", { path });
+  },
+
   // ─── UI ───────────────────────────────────────────────────
   activePanel: persisted.activePanel ?? "home",
   setActivePanel: (p) => {
