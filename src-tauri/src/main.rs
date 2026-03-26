@@ -9,6 +9,9 @@ mod mods;
 mod system_check;
 mod files;
 mod fabric;
+mod quilt;
+mod modpack;
+mod instance;
 
 fn main() {
     tauri::Builder::default()
@@ -46,10 +49,26 @@ fn main() {
             files::open_path,
             files::backup_world,
             files::list_backups,
+            files::copy_file_to_dir,
 
             // Fabric
             fabric::install_fabric,
             fabric::is_fabric_installed,
+
+            // Quilt
+            quilt::install_quilt,
+            quilt::is_quilt_installed,
+
+            // Modpack
+            modpack::import_mrpack,
+            modpack::check_mod_updates,
+            modpack::update_mod,
+
+            // Instance
+            instance::clone_instance,
+            instance::export_instance,
+            instance::get_resource_pack_icon,
+            instance::get_disk_usage,
 
             // Mods
             mods::search_modrinth,

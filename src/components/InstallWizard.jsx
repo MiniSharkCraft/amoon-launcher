@@ -67,7 +67,7 @@ By installing or using Minecraft, you agree to these terms:
 Full EULA: https://www.minecraft.net/en-us/eula`;
 
 export default function InstallWizard({ installation, versionId, onClose, onComplete }) {
-  const { checkSystem, downloadVersion, downloadProgress, java, downloadJava, javaLoading, installFabric, updateInstallation } = useStore();
+  const { checkSystem, downloadVersion, downloadProgress, java, downloadJava, javaLoading, installFabric, installQuilt, updateInstallation } = useStore();
 
   const [step,        setStep]       = useState(0);
   const [eulaOk,      setEulaOk]     = useState(false);
@@ -104,10 +104,12 @@ export default function InstallWizard({ installation, versionId, onClose, onComp
       if (!java) await downloadJava(21);
       await downloadVersion(versionId, installDir);
 
-      // Install Fabric if needed
+      // Install mod loader if needed
       const loader = installation?.loader ?? "vanilla";
       if (loader === "fabric") {
         await installFabric(versionId, installDir);
+      } else if (loader === "quilt") {
+        await installQuilt(versionId, installDir);
       }
 
       // Save gameDir back to the installation record

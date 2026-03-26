@@ -135,6 +135,17 @@ pub fn open_path(path: String) -> Result<(), String> {
     open::that(&path).map_err(|e| e.to_string())
 }
 
+// Copy a file into a destination directory (for drag & drop)
+#[tauri::command]
+pub fn copy_file_to_dir(src_path: String, dest_dir: String) -> Result<String, String> {
+    let src = PathBuf::from(&src_path);
+    let name = src.file_name().ok_or("Invalid source path")?.to_string_lossy().to_string();
+    let dest = PathBuf::from(&dest_dir).join(&name);
+    fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    fs::copy(&src, &dest).map_err(|e| e.to_string())?;
+    Ok(name)
+}
+
 // ─── World Backup ──────────────────────────────────────────────────────────────
 
 // Backup một world → zip vào thư mục backups/

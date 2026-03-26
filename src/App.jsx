@@ -20,6 +20,7 @@ import {
 import useStore from "./store";
 import InstallWizard from "./components/InstallWizard";
 import LoginModal from "./components/LoginModal";
+import EditInstallModalFull from "./components/EditInstallModal";
 import FileManagerPanel from "./panels/FileManagerPanel";
 import ScreenshotsPanel from "./panels/ScreenshotsPanel";
 
@@ -109,7 +110,7 @@ function AddInstallModal({ onClose }) {
   const releases = versions.filter(v=>v.type==="release");
   const handleAdd = () => {
     if (!name.trim()||!version) return;
-    addInstallation({ id:Date.now().toString(), name:name.trim(), version, loader, icon:loader, ram:4096, width:854, height:480, fullscreen:false, jvmArgs:"" });
+    addInstallation({ id:Date.now().toString(), name:name.trim(), version, loader, icon:loader, ram:4096, width:854, height:480, fullscreen:false, jvmArgs:"", gameDir:".amoon", notes:"" });
     onClose();
   };
 
@@ -142,69 +143,8 @@ function AddInstallModal({ onClose }) {
   );
 }
 
-// ─── Edit Installation Modal ──────────────────────────────────────────────────
-function EditInstallModal({ inst, onClose }) {
-  const { updateInstallation, versions } = useStore();
-  const [name, setName]           = useState(inst.name);
-  const [version, setVersion]     = useState(inst.version ?? "");
-  const [loader, setLoader]       = useState(inst.loader);
-  const [ram, setRam]             = useState(inst.ram ?? 4096);
-  const [width, setWidth]         = useState(inst.width ?? 854);
-  const [height, setHeight]       = useState(inst.height ?? 480);
-  const [fullscreen, setFull]     = useState(inst.fullscreen ?? false);
-  const [jvmArgs, setJvm]         = useState(inst.jvmArgs ?? "");
-  const releases = versions.filter(v=>v.type==="release");
-
-  const handleSave = () => {
-    updateInstallation(inst.id, { name, version:version||null, loader, ram, width:+width, height:+height, fullscreen, jvmArgs });
-    onClose();
-  };
-
-  const Row = ({ label, children }) => (
-    <div style={{ marginBottom:14 }}>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:6 }}>{label}</div>
-      {children}
-    </div>
-  );
-
-  return (
-    <Modal title="Edit installation" onClose={onClose} width={440}>
-      <Row label="Name"><input value={name} onChange={e=>setName(e.target.value)} style={inputStyle}/></Row>
-      <Row label="Version">
-        <select value={version} onChange={e=>setVersion(e.target.value)} style={inputStyle}>
-          <option value="">Latest release</option>
-          {releases.slice(0,40).map(v=><option key={v.id} value={v.id}>{v.id}</option>)}
-        </select>
-      </Row>
-      <Row label="Modloader">
-        <select value={loader} onChange={e=>setLoader(e.target.value)} style={inputStyle}>
-          {["vanilla","fabric","forge","neoforge","quilt"].map(l=><option key={l} value={l}>{l.charAt(0).toUpperCase()+l.slice(1)}</option>)}
-        </select>
-      </Row>
-      <Row label={`Max RAM — ${Math.round(ram/1024)}GB`}>
-        <input type="range" min={1024} max={16384} step={512} value={ram} onChange={e=>setRam(+e.target.value)} style={{ width:"100%", accentColor:C.accent }}/>
-      </Row>
-      <Row label="Resolution">
-        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-          <input value={width} onChange={e=>setWidth(e.target.value)} style={{ ...inputStyle, width:80 }} placeholder="854"/>
-          <span style={{ color:C.text3 }}>×</span>
-          <input value={height} onChange={e=>setHeight(e.target.value)} style={{ ...inputStyle, width:80 }} placeholder="480"/>
-          <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, color:C.text2, cursor:"pointer" }}>
-            <Toggle on={fullscreen} onChange={setFull}/>
-            Fullscreen
-          </label>
-        </div>
-      </Row>
-      <Row label="JVM Arguments">
-        <input value={jvmArgs} onChange={e=>setJvm(e.target.value)} placeholder="-XX:+UseG1GC -Xss1M" style={inputStyle}/>
-      </Row>
-      <div style={{ display:"flex", gap:8, marginTop:4 }}>
-        <button onClick={handleSave} style={{ ...btnPrimary, flex:1, justifyContent:"center" }}>Save</button>
-        <button onClick={onClose} style={{ ...btnSecondary, flex:1, justifyContent:"center" }}>Cancel</button>
-      </div>
-    </Modal>
-  );
-}
+// EditInstallModal — use the full component from components/
+const EditInstallModal = EditInstallModalFull;
 
 // ─── HOME panel ───────────────────────────────────────────────────────────────
 function HomeContent({ onEditInst }) {
@@ -482,6 +422,36 @@ function SettingsPanel() {
   );
 }
 
+// ─── History Panel ────────────────────────────────────────────────────────────
+function HistoryPanel() {
+  const { launchHistory } = useStore();
+  const fmt = (ts) => new Date(ts).toLocaleString("vi-VN", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+  return (
+    <div style={{ padding:"20px 24px", overflowY:"auto", height:"100%", boxSizing:"border-box" }}>
+      <div style={{ fontSize:18, fontWeight:600, color:C.text, marginBottom:20, display:"flex", alignItems:"center", gap:8 }}>
+        <ArrowsClockwise size={20} weight="duotone"/> Launch History
+        <span style={{ fontSize:12, color:C.text3, fontWeight:400 }}>({launchHistory.length} entries)</span>
+      </div>
+      {launchHistory.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"60px 0", color:C.text3 }}>No launch history yet</div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {launchHistory.map((h, i) => (
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderRadius:10, background:C.card, border:`1px solid ${C.border}` }}>
+              <GameController size={18} weight="duotone" color={C.accent}/>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, color:C.text, fontWeight:500 }}>{h.instName}</div>
+                <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>{h.versionId} · {h.account}</div>
+              </div>
+              <span style={{ fontSize:11, color:C.text3 }}>{fmt(h.timestamp)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const {
@@ -490,6 +460,7 @@ export default function App() {
     detectJava, fetchVersions, launchGame, isVersionInstalled, versions,
     installations, selectedInstall, setSelectedInstall,
     activePanel, setActivePanel, consoleLogs,
+    launchHistory, cloneInstance, exportInstance,
   } = useStore();
 
   const account = accounts.find(a=>a.id===activeAccountId) ?? null;
@@ -525,6 +496,7 @@ export default function App() {
     { id:"mods",        label:"Mods",        icon:<PuzzlePiece size={16} weight="duotone"/> },
     { id:"files",       label:"Files",       icon:<FolderOpen  size={16} weight="duotone"/> },
     { id:"screenshots", label:"Screenshots", icon:<Camera      size={16} weight="duotone"/> },
+    { id:"history",     label:"History",     icon:<ArrowsClockwise size={16} weight="duotone"/>, badge: launchHistory.length > 0 },
     { id:"accounts",    label:"Accounts",    icon:<Users       size={16} weight="duotone"/> },
     { id:"console",     label:"Console",     icon:<Terminal    size={16} weight="duotone"/>, badge: consoleLogs.length>0 },
     { id:"settings",    label:"Settings",    icon:<GearSix     size={16} weight="duotone"/> },
@@ -614,10 +586,11 @@ export default function App() {
 
         {/* ── Content ───────────────────────────────────────── */}
         <div style={{ flex:1, overflow:"hidden" }}>
-          {activePanel==="home"        && <HomeContent onEditInst={setEditInst}/>}
+          {activePanel==="home"        && <HomeContent onEditInst={setEditInst} onCloneInst={(inst)=>{ const destDir = (inst.gameDir??".amoon")+"-copy"; cloneInstance(inst.gameDir??".amoon", destDir); }} onExportInst={(inst)=>{ exportInstance(inst.gameDir??".amoon", (inst.gameDir??".amoon")+"-export.zip", {include_mods:true,include_saves:true,include_config:true,include_logs:false}); }}/>}
           {activePanel==="mods"        && <ModsPanel/>}
           {activePanel==="files"       && <FileManagerPanel/>}
           {activePanel==="screenshots" && <ScreenshotsPanel/>}
+          {activePanel==="history"     && <HistoryPanel/>}
           {activePanel==="accounts"    && <AccountsPanel onAddAccount={()=>setShowLogin(true)}/>}
           {activePanel==="console"     && <ConsolePanel/>}
           {activePanel==="settings"    && <SettingsPanel/>}

@@ -457,6 +457,12 @@ const useStore = create((set, get) => ({
       });
       get().addLog(`[AMoon] ${result}`);
       set({ launching:false, launchSuccess:result });
+      get().addLaunchHistory({
+        versionId,
+        instName: inst?.name ?? versionId,
+        account: account.username,
+        timestamp: Date.now(),
+      });
     } catch (e) {
       get().addLog(`[AMoon] Error: ${e}`);
       set({ launching:false, launchError:String(e) });
@@ -497,6 +503,99 @@ const useStore = create((set, get) => ({
   listBackups: async (gameDir) => {
     try { return await invoke("list_backups", { gameDir }); }
     catch { return []; }
+  },
+
+  // ─── Quilt installer ──────────────────────────────────────
+  installQuilt: async (mcVersion, gameDir = ".amoon") => {
+    try {
+      const quiltId = await invoke("install_quilt", { mcVersion, gameDir });
+      get().addLog(`[AMoon] Quilt installed: ${quiltId}`);
+      return quiltId;
+    } catch (e) {
+      get().addLog(`[AMoon] Quilt install failed: ${e}`);
+      throw e;
+    }
+  },
+  isQuiltInstalled: async (mcVersion, gameDir = ".amoon") => {
+    try { return await invoke("is_quilt_installed", { mcVersion, gameDir }); }
+    catch { return false; }
+  },
+
+  // ─── Modpack import ───────────────────────────────────────
+  importMrpack: async (mrpackPath, gameDir) => {
+    try {
+      const result = await invoke("import_mrpack", { mrpackPath, gameDir });
+      get().addLog(`[AMoon] Imported modpack "${result.name}" (${result.mods_count} mods)`);
+      return result;
+    } catch (e) {
+      get().addLog(`[AMoon] Modpack import failed: ${e}`);
+      throw e;
+    }
+  },
+
+  // ─── Mod updater ──────────────────────────────────────────
+  modUpdates: [],
+  modUpdatesLoading: false,
+  checkModUpdates: async (instanceDir, gameVersion, loader) => {
+    set({ modUpdatesLoading: true });
+    try {
+      const updates = await invoke("check_mod_updates", { instanceDir, gameVersion, loader });
+      set({ modUpdates: updates, modUpdatesLoading: false });
+      return updates;
+    } catch {
+      set({ modUpdates: [], modUpdatesLoading: false });
+      return [];
+    }
+  },
+  updateMod: async (instanceDir, oldFilename, updateUrl, newFilename) => {
+    try {
+      const result = await invoke("update_mod", { instanceDir, oldFilename, updateUrl, newFilename });
+      get().addLog(`[AMoon] ${result}`);
+      return result;
+    } catch (e) {
+      get().addLog(`[AMoon] Update mod failed: ${e}`);
+      throw e;
+    }
+  },
+
+  // ─── Instance management ──────────────────────────────────
+  cloneInstance: async (srcDir, destDir) => {
+    try {
+      const result = await invoke("clone_instance", { srcDir, destDir });
+      get().addLog(`[AMoon] ${result}`);
+      return result;
+    } catch (e) {
+      get().addLog(`[AMoon] Clone failed: ${e}`);
+      throw e;
+    }
+  },
+  exportInstance: async (gameDir, outputPath, options) => {
+    try {
+      const result = await invoke("export_instance", { gameDir, outputPath, options });
+      get().addLog(`[AMoon] ${result}`);
+      return result;
+    } catch (e) {
+      get().addLog(`[AMoon] Export failed: ${e}`);
+      throw e;
+    }
+  },
+  getResourcePackIcon: async (packPath) => {
+    try { return await invoke("get_resource_pack_icon", { packPath }); }
+    catch { return null; }
+  },
+  getDiskUsage: async (gameDir) => {
+    try { return await invoke("get_disk_usage", { gameDir }); }
+    catch { return null; }
+  },
+
+  // ─── Launch history ───────────────────────────────────────
+  launchHistory: JSON.parse(localStorage.getItem("amoon-launch-history") || "[]"),
+  addLaunchHistory: (entry) => {
+    set(s => {
+      const history = [entry, ...s.launchHistory].slice(0, 50);
+      localStorage.setItem("amoon-launch-history", JSON.stringify(history));
+      return { launchHistory: history };
+    });
   },
 
   // ─── Files / File Manager ────────────────────────────────

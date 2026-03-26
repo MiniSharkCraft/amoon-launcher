@@ -1,11 +1,12 @@
 // src/panels/FileManagerPanel.jsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   FolderOpen, Trash, ArrowsClockwise, MagnifyingGlass,
   FileText, FileCss, Archive, Folder, HardDrive,
   PuzzlePiece, Cube, SunHorizon, Globe, Terminal,
   Warning, CheckCircle, X, Bug,
 } from "@phosphor-icons/react";
+import { invoke } from "@tauri-apps/api/core";
 import useStore from "../store";
 import { C } from "../constants/theme";
 
@@ -39,7 +40,7 @@ function extIcon(entry) {
 }
 
 export default function FileManagerPanel() {
-  const { listDirFiles, deleteFile, openPath, readTextFile, installations, selectedInstall } = useStore();
+  const { listDirFiles, deleteFile, openPath, readTextFile, getResourcePackIcon, installations, selectedInstall } = useStore();
 
   const inst    = installations.find(i => i.id === selectedInstall);
   const gameDir = inst?.gameDir ?? ".amoon";
@@ -52,6 +53,8 @@ export default function FileManagerPanel() {
   const [logText,  setLogText] = useState(null);
   const [logFile,  setLogFile] = useState(null);
   const [deleting, setDel]    = useState(null);
+  const [dragOver,  setDragOver]  = useState(false);
+  const [packIcons, setPackIcons] = useState({});  // path → base64 url
 
   const activeTab = TABS.find(t => t.id === tab);
 
@@ -75,8 +78,24 @@ export default function FileManagerPanel() {
     setSearch("");
     setLogText(null);
     setLogFile(null);
+    setPackIcons({});
     load();
   }, [tab]);
+
+  // Load resource pack icons after files load
+  useEffect(() => {
+    if (tab !== "resourcepacks" || files.length === 0) return;
+    (async () => {
+      const icons = {};
+      for (const f of files) {
+        if (f.ext === "zip") {
+          const icon = await getResourcePackIcon(f.path);
+          if (icon) icons[f.path] = icon;
+        }
+      }
+      setPackIcons(icons);
+    })();
+  }, [files, tab]);
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -107,8 +126,44 @@ export default function FileManagerPanel() {
 
   const filtered = files.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
 
+  // Drag & drop: copy dropped files (paths available in Tauri via webview) into current tab folder
+  const handleDrop = useCallback(async (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (!activeTab || activeTab.id === "logs" || activeTab.id === "crash-reports" || activeTab.id === "saves") return;
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length === 0) return;
+
+    const destDir = `${gameDir}/${activeTab.subdir}`;
+    let copied = 0;
+    for (const f of droppedFiles) {
+      const filePath = f.path ?? "";
+      if (!filePath) continue;
+      try {
+        await invoke("copy_file_to_dir", { srcPath: filePath, destDir });
+        copied++;
+      } catch {}
+    }
+    if (copied > 0) {
+      showToast(`Đã thêm ${copied} file`);
+      load();
+    } else {
+      showToast("Drag & drop: mở folder rồi copy file vào thủ công", false);
+    }
+  }, [activeTab, gameDir, load]);
+
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+    <div
+      style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden", position:"relative" }}
+      onDragOver={e=>{ e.preventDefault(); setDragOver(true); }}
+      onDragLeave={()=>setDragOver(false)}
+      onDrop={handleDrop}
+    >
+      {dragOver && (
+        <div style={{ position:"absolute", inset:0, zIndex:40, background:"rgba(37,99,235,0.15)", border:`2px dashed ${C.accent}`, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+          <span style={{ fontSize:16, color:C.accent, fontWeight:600 }}>Drop files to install</span>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
@@ -268,7 +323,9 @@ export default function FileManagerPanel() {
                   >
                     {/* Name */}
                     <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
-                      {extIcon(entry)}
+                      {packIcons[entry.path]
+                        ? <img src={packIcons[entry.path]} alt="" style={{ width:15, height:15, borderRadius:2, imageRendering:"pixelated", flexShrink:0 }}/>
+                        : extIcon(entry)}
                       <div style={{ minWidth:0 }}>
                         <div style={{ fontSize:13, color: entry.ext.endsWith("disabled") ? C.text3 : C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                           {entry.name}
