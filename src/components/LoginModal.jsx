@@ -15,20 +15,35 @@ const AUTH_TYPES = [
 ];
 
 export default function LoginModal({ onClose }) {
-  const { loginOffline, accountLoading, accountError, accounts, activeAccountId, switchAccount, removeAccount } = useStore();
+  const { loginOffline, loginAmoon, loginMicrosoftStart, loginElybyStart, accountLoading, accountError, accounts, activeAccountId, switchAccount, removeAccount } = useStore();
   const [authType, setAuthType] = useState("offline");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [needs2fa, setNeeds2fa] = useState(false);
   const prevLen = useRef(accounts.length);
 
   useEffect(() => {
-    if (accounts.length > prevLen.current) { prevLen.current = accounts.length; }
+    if (accounts.length > prevLen.current) { prevLen.current = accounts.length; onClose(); }
     prevLen.current = accounts.length;
   }, [accounts.length]);
 
-  const handleAdd = () => {
-    if (!username.trim()) return;
-    loginOffline(username.trim());
+  const handleAdd = async () => {
+    if (authType === "offline") {
+      if (!username.trim()) return;
+      loginOffline(username.trim());
+    } else if (authType === "amoon") {
+      if (!username.trim() || !password) return;
+      try {
+        await loginAmoon(username.trim(), password, needs2fa ? totpCode : null);
+      } catch (e) {
+        if (String(e).includes("__2FA__")) setNeeds2fa(true);
+      }
+    } else if (authType === "microsoft") {
+      loginMicrosoftStart();
+    } else if (authType === "elyby") {
+      loginElybyStart();
+    }
   };
 
   return (
@@ -80,7 +95,7 @@ export default function LoginModal({ onClose }) {
             </div>
 
             {/* Password */}
-            {authType !== "offline" && (
+            {authType === "amoon" && (
               <input
                 placeholder="Password"
                 type="password"
@@ -90,17 +105,28 @@ export default function LoginModal({ onClose }) {
               />
             )}
 
+            {/* 2FA */}
+            {authType === "amoon" && needs2fa && (
+              <input
+                placeholder="2FA code (6 digits)"
+                value={totpCode}
+                onChange={e => setTotpCode(e.target.value)}
+                maxLength={6}
+                style={{ ...inputStyle, marginBottom: 14 }}
+              />
+            )}
+
             {accountError && <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{accountError}</div>}
 
             {/* Login button */}
             <button
               onClick={handleAdd}
-              disabled={!username.trim() || accountLoading}
+              disabled={(authType === "offline" && !username.trim()) || (authType === "amoon" && (!username.trim() || !password)) || accountLoading}
               style={{
                 width: "100%", padding: "10px 0", borderRadius: 8, border: "none",
                 background: "#22c55e", color: "white", fontSize: 13, fontWeight: 600,
                 cursor: "pointer", fontFamily: "inherit",
-                opacity: (!username.trim() || accountLoading) ? 0.5 : 1,
+                opacity: ((authType === "offline" && !username.trim()) || (authType === "amoon" && (!username.trim() || !password)) || accountLoading) ? 0.5 : 1,
               }}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -116,7 +142,7 @@ export default function LoginModal({ onClose }) {
                 : authType === "elyby"
                   ? "Ely.by gives you custom skin support and premium features on compatible servers."
                   : authType === "amoon"
-                    ? "AMoon Account is a custom auth system built by the AMoon Team. Register at amoon.app"
+                    ? "AMoon Account — hệ thống auth tự xây. Đăng ký tại account.anhcong.dev"
                     : "Play offline without an account. Your username will be displayed in-game."
               }
             </div>

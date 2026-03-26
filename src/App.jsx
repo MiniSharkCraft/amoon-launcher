@@ -652,7 +652,7 @@ export default function App() {
   const {
     accounts, activeAccountId, java, javaLoading,
     launching, launchError, launchSuccess,
-    detectJava, fetchVersions, launchGame, versions,
+    detectJava, fetchVersions, launchGame, isVersionInstalled, versions,
     installations, selectedInstall, setSelectedInstall,
     activePanel, setActivePanel, consoleLogs,
   } = useStore();
@@ -672,9 +672,16 @@ export default function App() {
   const playVer   = selInst?.version ?? (selInst?.id==="snap"?snaps[0]?.id:releases[0]?.id) ?? "...";
   const loaderLbl = selInst ? `${selInst.loader==="vanilla"?"":selInst.loader+"-"}${playVer}` : "...";
 
-  const handlePlay = () => {
+  const handlePlay = async () => {
     if (!account) { setShowLogin(true); return; }
-    setShowWizard(true);
+    const ver = selInst?.version ?? (selInst?.id === "snap" ? snaps[0]?.id : releases[0]?.id);
+    if (!ver) return;
+    const installed = await isVersionInstalled(ver);
+    if (installed) {
+      launchGame();
+    } else {
+      setShowWizard(true);
+    }
   };
 
   const NAV = [

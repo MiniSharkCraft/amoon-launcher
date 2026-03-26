@@ -133,6 +133,42 @@ const useStore = create((set, get) => ({
     const s = get();
     return s.accounts.find(a => a.id === s.activeAccountId) ?? null;
   },
+  loginAmoon: async (username, password, totpCode = null) => {
+    set({ accountLoading: true, accountError: null });
+    try {
+      const body = { username, password };
+      if (totpCode) body.totp_code = totpCode;
+      const res = await fetch("https://account.anhcong.dev/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.requires_2fa) throw new Error("__2FA__");
+        throw new Error(data.error || "Login failed");
+      }
+      const id = Date.now().toString();
+      set(s => ({
+        accounts: [...s.accounts, {
+          id,
+          username: data.username,
+          uuid: data.uuid,
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          avatarUrl: data.profile?.avatar_url || "",
+          skinUrl: data.profile?.skin_url || "",
+          accountType: "amoon",
+        }],
+        activeAccountId: id,
+        accountLoading: false,
+      }));
+      persistState(get());
+    } catch (e) {
+      set({ accountError: String(e).replace("Error: ",""), accountLoading: false });
+      throw e;
+    }
+  },
   loginOffline: async (username) => {
     set({ accountLoading: true, accountError: null });
     try {
@@ -341,6 +377,10 @@ const useStore = create((set, get) => ({
   // ─── Download version ──────────────────────────────────────
   downloading: false,
   downloadProgress: null,
+  isVersionInstalled: async (versionId, gameDir = ".amoon") => {
+    try { return await invoke("is_version_installed", { versionId, gameDir }); }
+    catch { return false; }
+  },
   downloadVersion: async (versionId, gameDir = ".amoon") => {
     set({ downloading: true, downloadProgress: { total: 0, completed: 0, current: "Starting..." } });
     get().addLog(`[AMoon] Downloading Minecraft ${versionId}...`);
@@ -391,16 +431,6 @@ const useStore = create((set, get) => ({
     get().addLog(`[AMoon] Java: ${java.path}`);
     get().addLog(`[AMoon] RAM: ${Math.round((inst?.ram??4096)/1024)}GB`);
     get().addLog(`[AMoon] Account: ${account.username}`);
-
-    // Download game files trước nếu cần
-    try {
-      get().addLog(`[AMoon] Checking game files...`);
-      await downloadVersion(versionId, ".amoon");
-    } catch (e) {
-      get().addLog(`[AMoon] Download error: ${e}`);
-      set({ launching:false, launchError:`Download failed: ${e}` });
-      return;
-    }
 
     try {
       const result = await invoke("launch_game", {

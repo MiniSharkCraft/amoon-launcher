@@ -126,6 +126,14 @@ pub struct AssetObject {
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
+/// Kiểm tra version đã được install đầy đủ chưa (có .jar + .json)
+#[tauri::command]
+pub fn is_version_installed(version_id: String, game_dir: String) -> bool {
+    let base = PathBuf::from(&game_dir).join("versions").join(&version_id);
+    base.join(format!("{}.jar", version_id)).exists()
+        && base.join(format!("{}.json", version_id)).exists()
+}
+
 #[tauri::command]
 pub async fn get_version_manifest() -> Result<VersionManifest, String> {
     let client = Client::new();
@@ -152,11 +160,19 @@ pub async fn download_version(version_id: String, game_dir: String) -> Result<St
         .find(|v| v.id == version_id)
         .ok_or(format!("Không tìm thấy version {}", version_id))?;
 
-    // 2. Fetch version detail JSON
-    let detail: VersionDetail = client
+    // 2. Fetch version detail JSON — save raw bytes để giữ toàn bộ fields gốc
+    let version_dir = game_path.join("versions").join(&version_id);
+    fs::create_dir_all(&version_dir).map_err(|e| e.to_string())?;
+    let version_json = version_dir.join(format!("{}.json", version_id));
+
+    let raw_bytes = client
         .get(&entry.url)
         .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .bytes().await.map_err(|e| e.to_string())?;
+    fs::write(&version_json, &raw_bytes).map_err(|e| e.to_string())?;
+
+    let detail: VersionDetail = serde_json::from_slice(&raw_bytes)
+        .map_err(|e| e.to_string())?;
 
     // Tính tổng số file cần download
     let lib_count = detail.libraries.iter()
@@ -166,20 +182,12 @@ pub async fn download_version(version_id: String, game_dir: String) -> Result<St
     set_progress(total, 0, "Starting...");
 
     // 3. Download client.jar
-    let version_dir = game_path.join("versions").join(&version_id);
-    fs::create_dir_all(&version_dir).map_err(|e| e.to_string())?;
-
     let client_jar = version_dir.join(format!("{}.jar", version_id));
     if !client_jar.exists() || !verify_sha1(&client_jar, &detail.downloads.client.sha1) {
         set_progress(total, 0, "Downloading client.jar...");
         download_file(&client, &detail.downloads.client.url, &client_jar).await?;
     }
     set_progress(total, 1, "client.jar done");
-
-    // Lưu version JSON
-    let version_json = version_dir.join(format!("{}.json", version_id));
-    fs::write(&version_json, serde_json::to_string(&detail).unwrap())
-        .map_err(|e| e.to_string())?;
 
     // 4. Download libraries
     let libs_dir = game_path.join("libraries");

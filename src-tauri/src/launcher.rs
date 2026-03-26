@@ -125,7 +125,7 @@ fn replace_placeholders(
         .replace("${assets_index_name}",   asset_index)
         .replace("${auth_uuid}",           &account.uuid)
         .replace("${auth_access_token}",   &account.access_token)
-        .replace("${user_type}",           &account.account_type)
+        .replace("${user_type}", match account.account_type.as_str() { "microsoft" => "msa", "offline" => "offline", _ => "mojang" })
         .replace("${version_type}",        "release")
         .replace("${resolution_width}",    &width.to_string())
         .replace("${resolution_height}",   &height.to_string())

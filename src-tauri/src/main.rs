@@ -26,6 +26,7 @@ fn main() {
             // Download
             download::get_version_manifest,
             download::download_version,
+            download::is_version_installed,
             download::verify_file,
             download::get_download_progress,
 
