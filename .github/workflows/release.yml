@@ -1,0 +1,210 @@
+name: Build & Release to R2
+
+on:
+  push:
+    tags:
+      - "v*"           # trigger khi push tag kiểu v0.1.0
+  workflow_dispatch:   # trigger thủ công
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Build Linux ─────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build Tauri (Linux)
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Collect artifacts
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          mkdir -p dist-release
+
+          # AppImage
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
+          if [ -n "$APPIMAGE" ]; then
+            cp "$APPIMAGE" "dist-release/amoon-launcher-${VERSION}-linux-x86_64.AppImage"
+          fi
+
+          # Deb
+          DEB=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
+          if [ -n "$DEB" ]; then
+            cp "$DEB" "dist-release/amoon-launcher-${VERSION}-linux-x86_64.deb"
+          fi
+
+          # tar.gz (raw binary + assets for install.sh)
+          mkdir -p /tmp/amoon-pkg
+          cp src-tauri/target/release/mc-launcher /tmp/amoon-pkg/amoon-launcher 2>/dev/null || true
+          tar -czf "dist-release/amoon-launcher-${VERSION}-linux-x86_64.tar.gz" -C /tmp/amoon-pkg .
+
+      - name: Generate checksums
+        run: |
+          cd dist-release
+          for f in *; do sha256sum "$f" | awk '{print $1}' > "${f}.sha256"; done
+          ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: dist-release/
+
+  # ── Build Windows ────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build Tauri (Windows)
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          mkdir -p dist-release
+
+          # NSIS installer (.exe)
+          EXE=$(find src-tauri/target/release/bundle/nsis -name "*.exe" | head -1)
+          if [ -n "$EXE" ]; then
+            cp "$EXE" "dist-release/amoon-launcher-${VERSION}-windows-x86_64-setup.exe"
+          fi
+
+          # MSI
+          MSI=$(find src-tauri/target/release/bundle/msi -name "*.msi" | head -1)
+          if [ -n "$MSI" ]; then
+            cp "$MSI" "dist-release/amoon-launcher-${VERSION}-windows-x86_64.msi"
+          fi
+
+          # zip (raw binary for install.ps1)
+          mkdir -p /tmp/amoon-pkg
+          cp src-tauri/target/release/mc-launcher.exe /tmp/amoon-pkg/amoon-launcher.exe 2>/dev/null || true
+          cd /tmp/amoon-pkg && zip -r "$GITHUB_WORKSPACE/dist-release/amoon-launcher-${VERSION}-windows-x86_64.zip" .
+
+      - name: Generate checksums (Windows)
+        shell: pwsh
+        run: |
+          Set-Location dist-release
+          Get-ChildItem -File | Where-Object { $_.Name -notlike "*.sha256" } | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            Set-Content "$($_.FullName).sha256" $hash
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist-release/
+
+  # ── Upload to R2 ─────────────────────────────────────────────────────────────
+  upload-r2:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: Install AWS CLI
+        run: pip install awscli
+
+      - name: Upload to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID:         ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET:             ${{ secrets.R2_BUCKET }}
+          VERSION:               ${{ needs.build-linux.outputs.version }}
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          # Upload versioned files
+          aws s3 cp all-artifacts/ "s3://${R2_BUCKET}/releases/${VERSION}/" \
+            --recursive \
+            --endpoint-url "$ENDPOINT" \
+            --no-progress
+
+          # Update latest.txt
+          echo "$VERSION" | aws s3 cp - "s3://${R2_BUCKET}/releases/latest.txt" \
+            --content-type "text/plain" \
+            --endpoint-url "$ENDPOINT"
+
+          # Upload install scripts
+          aws s3 cp scripts/install.sh  "s3://${R2_BUCKET}/install.sh" \
+            --content-type "text/x-sh"   --endpoint-url "$ENDPOINT"
+          aws s3 cp scripts/install.ps1  "s3://${R2_BUCKET}/install.ps1" \
+            --content-type "text/plain"  --endpoint-url "$ENDPOINT"
+
+          echo "Uploaded version ${VERSION} to R2"
+          aws s3 ls "s3://${R2_BUCKET}/releases/${VERSION}/" --endpoint-url "$ENDPOINT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: all-artifacts/*
+          generate_release_notes: true
