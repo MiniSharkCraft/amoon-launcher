@@ -89,9 +89,11 @@ export default function InstallWizard({ installation, versionId, onClose, onComp
     }).catch(() => setSysLoading(false));
   }, [step]);
 
-  // Install khi vào step 4
+  // Install khi vào step 4 — dùng ref để chắc chắn chỉ chạy 1 lần
+  const installStarted = useRef(false);
   useEffect(() => {
-    if (STEPS[step].id !== "install" || installing || done) return;
+    if (STEPS[step].id !== "install" || installStarted.current) return;
+    installStarted.current = true;
     runInstall();
   }, [step]);
 
@@ -523,7 +525,7 @@ function StepInstall({ installing, done, error, pct, downloadProgress, onRetry, 
           <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "2px solid rgba(34,197,94,0.3)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <CheckCircle size={40} weight="fill" color={GREEN}/>
           </div>
-          <div style={{ fontSize: 14, color: T2 }}>Minecraft {"{versionId}"} is ready to play</div>
+          <div style={{ fontSize: 14, color: T2 }}>Minecraft {versionId} is ready to play</div>
         </div>
       )}
 

@@ -235,6 +235,7 @@ pub async fn download_version(version_id: String, game_dir: String) -> Result<St
 
     let mut asset_done = 0u64;
     for (_name, obj) in &asset_objects.objects {
+        if obj.hash.len() < 2 { continue; } // skip malformed hash
         let prefix  = &obj.hash[..2];
         let obj_dir = objects_dir.join(prefix);
         fs::create_dir_all(&obj_dir).map_err(|e| e.to_string())?;
@@ -256,18 +257,24 @@ pub async fn download_version(version_id: String, game_dir: String) -> Result<St
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Download 1 file từ URL vào path
+// Download 1 file từ URL vào path — xóa file nếu lỗi giữa chừng
 pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<(), String> {
     let mut resp = client.get(url)
         .send().await.map_err(|e| e.to_string())?;
 
     let mut file = fs::File::create(dest).map_err(|e| e.to_string())?;
 
-    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
-        file.write_all(&chunk).map_err(|e| e.to_string())?;
-    }
+    let result = async {
+        while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+            file.write_all(&chunk).map_err(|e| e.to_string())?;
+        }
+        Ok::<(), String>(())
+    }.await;
 
-    Ok(())
+    if result.is_err() {
+        let _ = fs::remove_file(dest); // cleanup partial file
+    }
+    result
 }
 
 // Verify SHA1 của file

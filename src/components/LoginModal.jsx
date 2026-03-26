@@ -24,9 +24,9 @@ export default function LoginModal({ onClose }) {
   const prevLen = useRef(accounts.length);
 
   useEffect(() => {
-    if (accounts.length > prevLen.current) { prevLen.current = accounts.length; onClose(); }
+    if (accounts.length > prevLen.current) { onClose(); }
     prevLen.current = accounts.length;
-  }, [accounts.length]);
+  }, [accounts.length, onClose]);
 
   const handleAdd = async () => {
     if (authType === "offline") {
@@ -186,12 +186,12 @@ export default function LoginModal({ onClose }) {
             <div style={{ display: "flex", gap: 6 }}>
               <button
                 onClick={handleAdd}
-                disabled={!username.trim() || accountLoading}
+                disabled={(authType === "offline" && !username.trim()) || (authType === "amoon" && (!username.trim() || !password)) || accountLoading}
                 style={{
                   flex: 1, padding: "8px 0", borderRadius: 7, border: "none",
                   background: C.accent, color: "white", fontSize: 12, fontWeight: 500,
                   cursor: "pointer", fontFamily: "inherit",
-                  opacity: (!username.trim() || accountLoading) ? 0.5 : 1,
+                  opacity: ((authType === "offline" && !username.trim()) || (authType === "amoon" && (!username.trim() || !password)) || accountLoading) ? 0.5 : 1,
                 }}
               >
                 Add

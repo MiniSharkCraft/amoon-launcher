@@ -94,9 +94,10 @@ fn get_java_candidates() -> Vec<String> {
 
 fn parse_java_version(output: &str) -> Option<String> {
     // openjdk version "21.0.3" 2024-04-16
-    let line = output.lines().next()?;
+    let line  = output.lines().next()?;
     let start = line.find('"')? + 1;
     let end   = line.rfind('"')?;
+    if start >= end { return None; }
     Some(line[start..end].to_string())
 }
 
@@ -205,7 +206,10 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<(), String> {
         let parts: Vec<&str> = name.splitn(2, '/').collect();
         if parts.len() < 2 || parts[1].is_empty() { continue; }
 
-        let out = dest.join(parts[1]);
+        let rel = parts[1];
+        // Zip slip guard: skip paths with ".." components
+        if rel.contains("..") { continue; }
+        let out = dest.join(rel);
         if entry.is_dir() {
             fs::create_dir_all(&out).map_err(|e| e.to_string())?;
         } else {
@@ -232,6 +236,8 @@ fn extract_targz(archive: &Path, dest: &Path) -> Result<(), String> {
         let parts: Vec<_> = path.components().collect();
         if parts.len() < 2 { continue; }
         let stripped: PathBuf = parts[1..].iter().collect();
+        // Tar slip guard: skip paths with ".." components
+        if stripped.components().any(|c| c.as_os_str() == "..") { continue; }
         let out = dest.join(stripped);
 
         if entry.header().entry_type().is_dir() {

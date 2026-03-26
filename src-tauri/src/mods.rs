@@ -254,7 +254,12 @@ fn scan_dir(
         let entry    = entry.map_err(|e| e.to_string())?;
         let filename = entry.file_name().to_string_lossy().to_string();
 
-        if !filename.ends_with(".jar") && !filename.ends_with(".zip") { continue; }
+        // Hỗ trợ .jar/.zip và .jar.disabled/.zip.disabled
+        let is_mod = filename.ends_with(".jar")
+            || filename.ends_with(".zip")
+            || filename.ends_with(".jar.disabled")
+            || filename.ends_with(".zip.disabled");
+        if !is_mod { continue; }
 
         let enabled = !filename.ends_with(".disabled");
         let clean_name = filename

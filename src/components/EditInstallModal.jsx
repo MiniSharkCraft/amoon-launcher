@@ -18,7 +18,9 @@ export default function EditInstallModal({ inst, onClose }) {
   const releases = versions.filter(v => v.type === "release");
 
   const handleSave = () => {
-    updateInstallation(inst.id, { name, version: version || null, loader, ram, width: +width, height: +height, fullscreen, jvmArgs });
+    const w = Math.max(320, Math.min(7680, parseInt(width, 10) || 854));
+    const h = Math.max(240, Math.min(4320, parseInt(height, 10) || 480));
+    updateInstallation(inst.id, { name, version: version || null, loader, ram, width: w, height: h, fullscreen, jvmArgs });
     onClose();
   };
 

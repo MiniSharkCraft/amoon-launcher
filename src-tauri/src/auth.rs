@@ -301,7 +301,7 @@ pub async fn login_elyby(code: String, code_verifier: String) -> Result<Account,
     let username = profile["username"].as_str()
         .ok_or("Không lấy được username")?.to_string();
     let uuid = profile["uuid"].as_str()
-        .unwrap_or(&Uuid::new_v4().to_string())
+        .ok_or("Không lấy được UUID từ Ely.by")?
         .to_string();
 
     Ok(Account {

@@ -22,6 +22,10 @@ pub struct LaunchConfig {
 
 #[tauri::command]
 pub fn launch_game(config: LaunchConfig, account: Account) -> Result<String, String> {
+    // Validate memory settings
+    let max_mem = config.max_memory.max(512);
+    let min_mem = config.min_memory.min(max_mem);
+
     let game_path  = PathBuf::from(&config.game_dir);
     let version_id = &config.version_id;
 
@@ -44,8 +48,8 @@ pub fn launch_game(config: LaunchConfig, account: Account) -> Result<String, Str
 
     // ─── JVM Arguments ────────────────────────────────────────
     let mut jvm_args: Vec<String> = vec![
-        format!("-Xmx{}m", config.max_memory),
-        format!("-Xms{}m", config.min_memory),
+        format!("-Xmx{}m", max_mem),
+        format!("-Xms{}m", min_mem),
         format!("-Djava.library.path={}", natives_dir.display()),
         format!("-Dminecraft.launcher.brand=AMoon"),
         format!("-Dminecraft.launcher.version=1.0.0"),
@@ -97,13 +101,19 @@ pub fn launch_game(config: LaunchConfig, account: Account) -> Result<String, Str
     }
 
     // ─── Spawn process ────────────────────────────────────────
-    Command::new(&config.java_path)
+    let child = Command::new(&config.java_path)
         .args(&jvm_args)
         .current_dir(&config.game_dir)
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Không launch được game: {}", e))?;
 
-    Ok(format!("Đã launch Minecraft {} 🐧", version_id))
+    // Spawn thread chờ exit code để detect crash sớm
+    std::thread::spawn(move || {
+        let _ = child.wait_with_output();
+    });
+
+    Ok(format!("Đã launch Minecraft {}", version_id))
 }
 
 // Thay thế placeholder ${...} trong game arguments

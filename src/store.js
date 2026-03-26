@@ -241,10 +241,13 @@ const useStore = create((set, get) => ({
     persistState(get());
   },
   removeAccount: (id) => {
-    set(s => ({
-      accounts: s.accounts.filter(a => a.id!==id),
-      activeAccountId: s.activeAccountId===id ? (s.accounts[0]?.id??null) : s.activeAccountId,
-    }));
+    set(s => {
+      const remaining = s.accounts.filter(a => a.id !== id);
+      return {
+        accounts: remaining,
+        activeAccountId: s.activeAccountId === id ? (remaining[0]?.id ?? null) : s.activeAccountId,
+      };
+    });
     persistState(get());
   },
 
@@ -423,6 +426,7 @@ const useStore = create((set, get) => ({
     const inst     = installations.find(i => i.id===selectedInstall);
     const releases = versions.filter(v => v.type==="release");
     const snaps    = versions.filter(v => v.type==="snapshot");
+    if (releases.length === 0) { set({ launchError:"Chưa load được danh sách version! Kiểm tra kết nối mạng." }); return; }
     const versionId = inst?.version ?? (inst?.id==="snap" ? snaps[0]?.id : releases[0]?.id) ?? releases[0]?.id;
     if (!versionId) { set({ launchError:"Chưa load được version!" }); return; }
 
