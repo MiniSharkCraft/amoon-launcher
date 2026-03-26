@@ -498,6 +498,7 @@ export default function App() {
   const [showAddInst,  setShowAddInst]  = useState(false);
   const [editInst,     setEditInst]     = useState(null);
   const [showWizard,   setShowWizard]   = useState(false);
+  const [qcServer,     setQcServer]     = useState("");
 
   useEffect(() => { detectJava(); fetchVersions(); }, []);
 
@@ -511,9 +512,9 @@ export default function App() {
     if (!account) { setShowLogin(true); return; }
     const ver = selInst?.version ?? (selInst?.id === "snap" ? snaps[0]?.id : releases[0]?.id);
     if (!ver) return;
-    const installed = await isVersionInstalled(ver);
+    const installed = await isVersionInstalled(ver, selInst?.gameDir ?? ".amoon");
     if (installed) {
-      launchGame();
+      launchGame(qcServer.trim() || null);
     } else {
       setShowWizard(true);
     }
@@ -639,6 +640,18 @@ export default function App() {
         )}
 
         <div style={{ flex:1 }}/>
+
+        {/* Quick Connect */}
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <Globe size={13} color={C.text3}/>
+          <input
+            value={qcServer}
+            onChange={e=>setQcServer(e.target.value)}
+            placeholder="play.server.net"
+            title="Quick Connect — server address passed to --server on launch"
+            style={{ width:150, background:"rgba(255,255,255,0.04)", color:C.text2, border:`1px solid ${C.border}`, borderRadius:6, padding:"5px 9px", fontSize:12, fontFamily:"inherit", outline:"none" }}
+          />
+        </div>
 
         {launchError   && <span style={{ fontSize:12, color:C.red,   maxWidth:300, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"inline-flex", alignItems:"center", gap:5 }}><Warning size={14} weight="fill"/>{launchError}</span>}
         {launchSuccess && <span style={{ fontSize:12, color:C.green, maxWidth:300, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"inline-flex", alignItems:"center", gap:5 }}><CheckCircle size={14} weight="fill"/>{launchSuccess}</span>}

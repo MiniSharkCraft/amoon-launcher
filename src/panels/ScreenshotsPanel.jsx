@@ -71,8 +71,9 @@ function ScreenshotCard({ entry, onOpen, onDelete }) {
 }
 
 export default function ScreenshotsPanel() {
-  const { listDirFiles, deleteFile, openPath, readImageBase64 } = useStore();
-  const gameDir = ".amoon";
+  const { listDirFiles, deleteFile, openPath, readImageBase64, installations, selectedInstall } = useStore();
+  const inst    = installations.find(i => i.id === selectedInstall);
+  const gameDir = inst?.gameDir ?? ".amoon";
 
   const [files,    setFiles]   = useState([]);
   const [loading,  setLoad]    = useState(false);

@@ -57,21 +57,23 @@ pub struct VersionEntry {
     pub sha1: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VersionDetail {
-    pub id:          String,
-    pub downloads:   Downloads,
-    pub libraries:   Vec<Library>,
+    pub id:           String,
+    pub downloads:    Option<Downloads>,   // Fabric không có field này
+    pub libraries:    Vec<Library>,
     #[serde(rename = "assetIndex")]
-    pub asset_index: AssetIndex,
+    pub asset_index:  Option<AssetIndex>,  // Fabric không có field này
     #[serde(rename = "mainClass")]
-    pub main_class:  String,
-    pub arguments:   Option<serde_json::Value>,
+    pub main_class:   String,
+    pub arguments:    Option<serde_json::Value>,
     #[serde(rename = "minecraftArguments")]
-    pub legacy_args: Option<String>, // 1.12 trở về dùng cái này
+    pub legacy_args:  Option<String>,
+    #[serde(rename = "inheritsFrom")]
+    pub inherits_from: Option<String>,     // Fabric/Forge dùng để extend vanilla
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Downloads {
     pub client: FileInfo,
 }
@@ -83,30 +85,30 @@ pub struct FileInfo {
     pub size: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Library {
     pub name:      String,
     pub downloads: Option<LibraryDownloads>,
     pub rules:     Option<Vec<Rule>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LibraryDownloads {
     pub artifact: Option<FileInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Rule {
     pub action: String,
     pub os:     Option<OsRule>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OsRule {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssetIndex {
     pub id:   String,
     pub url:  String,
@@ -183,9 +185,11 @@ pub async fn download_version(version_id: String, game_dir: String) -> Result<St
 
     // 3. Download client.jar
     let client_jar = version_dir.join(format!("{}.jar", version_id));
-    if !client_jar.exists() || !verify_sha1(&client_jar, &detail.downloads.client.sha1) {
-        set_progress(total, 0, "Downloading client.jar...");
-        download_file(&client, &detail.downloads.client.url, &client_jar).await?;
+    if let Some(dl) = &detail.downloads {
+        if !client_jar.exists() || !verify_sha1(&client_jar, &dl.client.sha1) {
+            set_progress(total, 0, "Downloading client.jar...");
+            download_file(&client, &dl.client.url, &client_jar).await?;
+        }
     }
     set_progress(total, 1, "client.jar done");
 
@@ -219,10 +223,12 @@ pub async fn download_version(version_id: String, game_dir: String) -> Result<St
     fs::create_dir_all(&indexes_dir).map_err(|e| e.to_string())?;
     fs::create_dir_all(&objects_dir).map_err(|e| e.to_string())?;
 
-    let index_file = indexes_dir.join(format!("{}.json", detail.asset_index.id));
+    let asset_index = detail.asset_index.as_ref()
+        .ok_or("Version JSON thiếu assetIndex")?;
+    let index_file = indexes_dir.join(format!("{}.json", asset_index.id));
     if !index_file.exists() {
         set_progress(total, completed, "Downloading asset index...");
-        download_file(&client, &detail.asset_index.url, &index_file).await?;
+        download_file(&client, &asset_index.url, &index_file).await?;
     }
 
     // 6. Download assets
@@ -331,69 +337,97 @@ pub fn should_download_library(lib: &Library) -> bool {
     allowed
 }
 
-// Build classpath từ version JSON
-pub fn build_classpath(game_dir: &str, version_id: &str) -> Result<String, String> {
-    let game_path    = PathBuf::from(game_dir);
-    let version_json = game_path.join("versions").join(version_id).join(format!("{}.json", version_id));
+// Helper: load version JSON string
+pub fn load_version_json(game_dir: &str, version_id: &str) -> Result<String, String> {
+    let path = PathBuf::from(game_dir)
+        .join("versions").join(version_id)
+        .join(format!("{}.json", version_id));
+    fs::read_to_string(&path)
+        .map_err(|e| format!("Không đọc được {}.json: {}", version_id, e))
+}
 
-    let content = fs::read_to_string(&version_json)
-        .map_err(|e| format!("Không đọc được version JSON: {}", e))?;
+// Helper: add a library's path to entries if it exists
+fn push_lib(libs_dir: &Path, lib: &Library, entries: &mut Vec<String>) {
+    if !should_download_library(lib) { return; }
+    // Mojang-style: has downloads.artifact
+    if let Some(dl) = &lib.downloads {
+        if dl.artifact.is_some() {
+            let p = libs_dir.join(maven_to_path(&lib.name));
+            if p.exists() { entries.push(p.to_string_lossy().to_string()); }
+        }
+    } else {
+        // Fabric/Forge style: just name, no downloads field
+        let p = libs_dir.join(maven_to_path(&lib.name));
+        if p.exists() { entries.push(p.to_string_lossy().to_string()); }
+    }
+}
+
+// Build classpath từ version JSON — hỗ trợ inheritsFrom (Fabric/Forge)
+pub fn build_classpath(game_dir: &str, version_id: &str) -> Result<String, String> {
+    let game_path = PathBuf::from(game_dir);
+    let libs_dir  = game_path.join("libraries");
+    let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+    let mut entries: Vec<String> = Vec::new();
+
+    let content = load_version_json(game_dir, version_id)?;
     let detail: VersionDetail = serde_json::from_str(&content)
         .map_err(|e| format!("Không parse được version JSON: {}", e))?;
 
-    let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let libs_dir  = game_path.join("libraries");
-
-    let mut entries: Vec<String> = Vec::new();
-
-    // Thêm libraries
-    for lib in &detail.libraries {
-        if !should_download_library(lib) { continue; }
-        if let Some(downloads) = &lib.downloads {
-            if let Some(_artifact) = &downloads.artifact {
-                let lib_path = libs_dir.join(maven_to_path(&lib.name));
-                if lib_path.exists() {
-                    entries.push(lib_path.to_string_lossy().to_string());
-                }
+    if let Some(parent_id) = &detail.inherits_from {
+        // Loader (Fabric/Forge): load parent vanilla libs first
+        if let Ok(parent_content) = load_version_json(game_dir, parent_id) {
+            if let Ok(parent) = serde_json::from_str::<VersionDetail>(&parent_content) {
+                for lib in &parent.libraries { push_lib(&libs_dir, lib, &mut entries); }
+                // Parent's client.jar (vanilla jar)
+                let jar = game_path.join("versions").join(parent_id).join(format!("{}.jar", parent_id));
+                if jar.exists() { entries.push(jar.to_string_lossy().to_string()); }
             }
         }
+        // Loader's own libs (fabric-loader, intermediary, etc.)
+        for lib in &detail.libraries { push_lib(&libs_dir, lib, &mut entries); }
+    } else {
+        // Vanilla: just its own libs + client.jar
+        for lib in &detail.libraries { push_lib(&libs_dir, lib, &mut entries); }
+        let jar = game_path.join("versions").join(version_id).join(format!("{}.jar", version_id));
+        entries.push(jar.to_string_lossy().to_string());
     }
-
-    // Thêm client.jar cuối cùng
-    let client_jar = game_path
-        .join("versions").join(version_id)
-        .join(format!("{}.jar", version_id));
-    entries.push(client_jar.to_string_lossy().to_string());
 
     Ok(entries.join(separator))
 }
 
-// Lấy mainClass và game args từ version JSON
-pub fn get_launch_info(game_dir: &str, version_id: &str) -> Result<(String, Vec<String>), String> {
-    let game_path    = PathBuf::from(game_dir);
-    let version_json = game_path.join("versions").join(version_id).join(format!("{}.json", version_id));
-
-    let content = fs::read_to_string(&version_json)
-        .map_err(|e| format!("Không đọc được version JSON: {}", e))?;
-    let detail: VersionDetail = serde_json::from_str(&content)
-        .map_err(|e| format!("Không parse được version JSON: {}", e))?;
-
-    // Parse game arguments (1.13+ dùng arguments.game, cũ hơn dùng minecraftArguments)
-    let mut game_args: Vec<String> = Vec::new();
-
-    if let Some(args) = &detail.arguments {
-        if let Some(game) = args["game"].as_array() {
+fn extract_game_args(detail: &VersionDetail) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    if let Some(a) = &detail.arguments {
+        if let Some(game) = a["game"].as_array() {
             for arg in game {
-                if let Some(s) = arg.as_str() {
-                    game_args.push(s.to_string());
-                }
-                // Bỏ qua các conditional rules
+                if let Some(s) = arg.as_str() { args.push(s.to_string()); }
             }
         }
     } else if let Some(legacy) = &detail.legacy_args {
-        // 1.12 trở về: "--username ${auth_player_name} --version ${version_name} ..."
-        game_args = legacy.split_whitespace().map(|s| s.to_string()).collect();
+        args = legacy.split_whitespace().map(|s| s.to_string()).collect();
     }
+    args
+}
 
-    Ok((detail.main_class, game_args))
+// Lấy mainClass + game args — hỗ trợ inheritsFrom
+pub fn get_launch_info(game_dir: &str, version_id: &str) -> Result<(String, Vec<String>), String> {
+    let content = load_version_json(game_dir, version_id)?;
+    let detail: VersionDetail = serde_json::from_str(&content)
+        .map_err(|e| format!("Không parse được version JSON: {}", e))?;
+
+    // mainClass: dùng của version hiện tại (Fabric override vanilla)
+    let main_class = detail.main_class.clone();
+
+    // game args: nếu inheritsFrom thì lấy từ parent (Fabric không có game args)
+    let game_args = if let Some(parent_id) = &detail.inherits_from {
+        load_version_json(game_dir, parent_id)
+            .ok()
+            .and_then(|c| serde_json::from_str::<VersionDetail>(&c).ok())
+            .map(|p| extract_game_args(&p))
+            .unwrap_or_default()
+    } else {
+        extract_game_args(&detail)
+    };
+
+    Ok((main_class, game_args))
 }

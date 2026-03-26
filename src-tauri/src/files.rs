@@ -134,3 +134,92 @@ pub fn delete_file(file_path: String) -> Result<String, String> {
 pub fn open_path(path: String) -> Result<(), String> {
     open::that(&path).map_err(|e| e.to_string())
 }
+
+// ─── World Backup ──────────────────────────────────────────────────────────────
+
+// Backup một world → zip vào thư mục backups/
+#[tauri::command]
+pub fn backup_world(
+    game_dir:   String,
+    world_name: String,
+) -> Result<String, String> {
+    use std::io::Write;
+    use zip::write::FileOptions;
+    use zip::CompressionMethod;
+
+    let saves_dir  = PathBuf::from(&game_dir).join("saves");
+    let world_dir  = saves_dir.join(&world_name);
+    if !world_dir.exists() {
+        return Err(format!("World '{}' không tồn tại", world_name));
+    }
+
+    let backups_dir = PathBuf::from(&game_dir).join("backups");
+    fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
+
+    // Tên file: worldName_YYYYMMDD_HHMMSS.zip
+    let ts = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let backup_name = format!("{}_backup_{}.zip", world_name, ts);
+    let backup_path = backups_dir.join(&backup_name);
+
+    let file    = fs::File::create(&backup_path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(file);
+    let opts: FileOptions<()> = FileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    add_dir_to_zip(&mut zip, &world_dir, &world_dir, &opts)
+        .map_err(|e| e.to_string())?;
+    zip.finish().map_err(|e| e.to_string())?;
+
+    Ok(backup_name)
+}
+
+fn add_dir_to_zip(
+    zip:     &mut zip::ZipWriter<fs::File>,
+    base:    &Path,
+    current: &Path,
+    opts:    &zip::write::FileOptions<()>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    for entry in fs::read_dir(current)? {
+        let entry = entry?;
+        let path  = entry.path();
+        let rel   = path.strip_prefix(base)?;
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+
+        if path.is_dir() {
+            zip.add_directory::<_, ()>(format!("{}/", rel_str), Default::default())?;
+            add_dir_to_zip(zip, base, &path, opts)?;
+        } else {
+            zip.start_file(&rel_str, *opts)?;
+            let data = fs::read(&path)?;
+            zip.write_all(&data)?;
+        }
+    }
+    Ok(())
+}
+
+// List backup files cho một game_dir
+#[tauri::command]
+pub fn list_backups(game_dir: String) -> Vec<FileEntry> {
+    let backups_dir = PathBuf::from(&game_dir).join("backups");
+    if !backups_dir.exists() { return vec![]; }
+
+    let mut entries: Vec<FileEntry> = vec![];
+    if let Ok(rd) = fs::read_dir(&backups_dir) {
+        for item in rd.flatten() {
+            let name = item.file_name().to_string_lossy().to_string();
+            if !name.ends_with(".zip") { continue; }
+            let meta     = item.metadata().ok();
+            let size     = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let modified = meta.and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs()).unwrap_or(0);
+            entries.push(FileEntry {
+                path: item.path().to_string_lossy().to_string(),
+                name, size, modified, ext: "zip".into(), is_dir: false,
+            });
+        }
+    }
+    entries.sort_by(|a, b| b.modified.cmp(&a.modified));
+    entries
+}

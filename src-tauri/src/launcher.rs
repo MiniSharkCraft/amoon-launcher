@@ -168,12 +168,28 @@ fn build_legacy_game_args(
     ]
 }
 
-// Lấy asset index id từ version JSON
+// Lấy asset index id — check cả inheritsFrom (Fabric → lấy từ vanilla parent)
 fn get_asset_index_id(game_dir: &str, version_id: &str) -> Option<String> {
     let path = PathBuf::from(game_dir)
         .join("versions").join(version_id)
         .join(format!("{}.json", version_id));
     let content = std::fs::read_to_string(path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    json["assetIndex"]["id"].as_str().map(|s| s.to_string())
+
+    // Thử lấy từ version này trước
+    if let Some(id) = json["assetIndex"]["id"].as_str() {
+        return Some(id.to_string());
+    }
+    // Nếu không có (Fabric), thử lấy từ parent
+    if let Some(parent_id) = json["inheritsFrom"].as_str() {
+        let parent_path = PathBuf::from(game_dir)
+            .join("versions").join(parent_id)
+            .join(format!("{}.json", parent_id));
+        if let Ok(pc) = std::fs::read_to_string(parent_path) {
+            if let Ok(pj) = serde_json::from_str::<serde_json::Value>(&pc) {
+                return pj["assetIndex"]["id"].as_str().map(|s| s.to_string());
+            }
+        }
+    }
+    None
 }

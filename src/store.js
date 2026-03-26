@@ -38,8 +38,8 @@ const persisted = loadPersistedState();
 
 // ─── Default installations ───────────────────────────────────────────────────
 const DEFAULT_INSTALLATIONS = [
-  { id:"snap", name:"Latest Snapshot", version:null, loader:"vanilla", icon:"vanilla", ram:4096, width:854, height:480, fullscreen:false, jvmArgs:"" },
-  { id:"rel",  name:"Latest Release",  version:null, loader:"vanilla", icon:"vanilla", ram:4096, width:854, height:480, fullscreen:false, jvmArgs:"" },
+  { id:"snap", name:"Latest Snapshot", version:null, loader:"vanilla", icon:"vanilla", ram:4096, width:854, height:480, fullscreen:false, jvmArgs:"", gameDir:".amoon" },
+  { id:"rel",  name:"Latest Release",  version:null, loader:"vanilla", icon:"vanilla", ram:4096, width:854, height:480, fullscreen:false, jvmArgs:"", gameDir:".amoon" },
 ];
 
 // ─── Store ───────────────────────────────────────────────────────────────────
@@ -417,7 +417,7 @@ const useStore = create((set, get) => ({
   launching: false,
   launchError: null,
   launchSuccess: null,
-  launchGame: async () => {
+  launchGame: async (quickConnectServer = null) => {
     const { accounts, activeAccountId, versions, installations, selectedInstall, java, downloadVersion } = get();
     const account = accounts.find(a => a.id===activeAccountId);
     if (!account) { set({ launchError:"Chưa đăng nhập!" }); return; }
@@ -437,17 +437,21 @@ const useStore = create((set, get) => ({
     get().addLog(`[AMoon] Account: ${account.username}`);
 
     try {
+      const gameDir = inst?.gameDir ?? ".amoon";
       const result = await invoke("launch_game", {
         config: {
           version_id: versionId,
-          game_dir: ".amoon",
+          game_dir: gameDir,
           java_path: java.path,
           max_memory: inst?.ram ?? 4096,
           min_memory: 512,
           width: inst?.width ?? 854,
           height: inst?.height ?? 480,
           fullscreen: inst?.fullscreen ?? false,
-          extra_jvm_args: inst?.jvmArgs ? inst.jvmArgs.split(" ").filter(Boolean) : [],
+          extra_jvm_args: [
+            ...(inst?.jvmArgs ? inst.jvmArgs.split(" ").filter(Boolean) : []),
+            ...(quickConnectServer ? ["--server", quickConnectServer] : []),
+          ],
         },
         account,
       });
@@ -457,6 +461,42 @@ const useStore = create((set, get) => ({
       get().addLog(`[AMoon] Error: ${e}`);
       set({ launching:false, launchError:String(e) });
     }
+  },
+
+  // ─── Fabric installer ────────────────────────────────────
+  fabricInstalling: false,
+  installFabric: async (mcVersion, gameDir = ".amoon") => {
+    set({ fabricInstalling: true });
+    try {
+      const fabricId = await invoke("install_fabric", { mcVersion, gameDir });
+      get().addLog(`[AMoon] Fabric installed: ${fabricId}`);
+      set({ fabricInstalling: false });
+      return fabricId;
+    } catch (e) {
+      get().addLog(`[AMoon] Fabric install failed: ${e}`);
+      set({ fabricInstalling: false });
+      throw e;
+    }
+  },
+  isFabricInstalled: async (mcVersion, gameDir = ".amoon") => {
+    try { return await invoke("is_fabric_installed", { mcVersion, gameDir }); }
+    catch { return false; }
+  },
+
+  // ─── World backups ────────────────────────────────────────
+  backupWorld: async (gameDir, worldName) => {
+    try {
+      const name = await invoke("backup_world", { gameDir, worldName });
+      get().addLog(`[AMoon] Backup created: ${name}`);
+      return name;
+    } catch (e) {
+      get().addLog(`[AMoon] Backup failed: ${e}`);
+      throw e;
+    }
+  },
+  listBackups: async (gameDir) => {
+    try { return await invoke("list_backups", { gameDir }); }
+    catch { return []; }
   },
 
   // ─── Files / File Manager ────────────────────────────────

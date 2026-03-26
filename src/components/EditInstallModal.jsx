@@ -5,6 +5,14 @@ import Modal from "./Modal";
 import Toggle from "./Toggle";
 import { C, inputStyle, btnPrimary, btnSecondary } from "../constants/theme";
 
+const PERF_PRESETS = [
+  { label: "Potato",  ram: 1024, jvm: "-Xss512k -XX:MaxPermSize=128m" },
+  { label: "Low",     ram: 2048, jvm: "" },
+  { label: "Medium",  ram: 4096, jvm: "" },
+  { label: "High",    ram: 6144, jvm: "-XX:+AlwaysPreTouch" },
+  { label: "Ultra",   ram: 8192, jvm: "-XX:+AlwaysPreTouch -XX:+UseStringDeduplication" },
+];
+
 export default function EditInstallModal({ inst, onClose }) {
   const { updateInstallation, versions } = useStore();
   const [name, setName]           = useState(inst.name);
@@ -15,12 +23,13 @@ export default function EditInstallModal({ inst, onClose }) {
   const [height, setHeight]       = useState(inst.height ?? 480);
   const [fullscreen, setFull]     = useState(inst.fullscreen ?? false);
   const [jvmArgs, setJvm]         = useState(inst.jvmArgs ?? "");
+  const [gameDir, setGameDir]     = useState(inst.gameDir ?? ".amoon");
   const releases = versions.filter(v => v.type === "release");
 
   const handleSave = () => {
     const w = Math.max(320, Math.min(7680, parseInt(width, 10) || 854));
     const h = Math.max(240, Math.min(4320, parseInt(height, 10) || 480));
-    updateInstallation(inst.id, { name, version: version || null, loader, ram, width: w, height: h, fullscreen, jvmArgs });
+    updateInstallation(inst.id, { name, version: version || null, loader, ram, width: w, height: h, fullscreen, jvmArgs, gameDir: gameDir || ".amoon" });
     onClose();
   };
 
@@ -32,7 +41,7 @@ export default function EditInstallModal({ inst, onClose }) {
   );
 
   return (
-    <Modal title="Edit installation" onClose={onClose} width={440}>
+    <Modal title="Edit installation" onClose={onClose} width={460}>
       <Row label="Name"><input value={name} onChange={e => setName(e.target.value)} style={inputStyle} /></Row>
       <Row label="Version">
         <select value={version} onChange={e => setVersion(e.target.value)} style={inputStyle}>
@@ -46,6 +55,25 @@ export default function EditInstallModal({ inst, onClose }) {
             <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
           )}
         </select>
+      </Row>
+      <Row label="Game Directory">
+        <input value={gameDir} onChange={e => setGameDir(e.target.value)} placeholder=".amoon" style={inputStyle} />
+      </Row>
+      <Row label="Performance Preset">
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {PERF_PRESETS.map(p => (
+            <button
+              key={p.label}
+              onClick={() => { setRam(p.ram); if (p.jvm) setJvm(p.jvm); }}
+              style={{
+                padding: "5px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+                border: `1px solid ${ram === p.ram ? C.accent : "rgba(255,255,255,0.1)"}`,
+                background: ram === p.ram ? `${C.accent}22` : "rgba(255,255,255,0.04)",
+                color: ram === p.ram ? C.accent : C.text2,
+              }}
+            >{p.label}</button>
+          ))}
+        </div>
       </Row>
       <Row label={`Max RAM — ${Math.round(ram / 1024)}GB`}>
         <input type="range" min={1024} max={16384} step={512} value={ram} onChange={e => setRam(+e.target.value)} style={{ width: "100%", accentColor: C.accent }} />

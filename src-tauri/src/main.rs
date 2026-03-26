@@ -8,6 +8,7 @@ mod launcher;
 mod mods;
 mod system_check;
 mod files;
+mod fabric;
 
 fn main() {
     tauri::Builder::default()
@@ -43,6 +44,12 @@ fn main() {
             files::read_image_base64,
             files::delete_file,
             files::open_path,
+            files::backup_world,
+            files::list_backups,
+
+            // Fabric
+            fabric::install_fabric,
+            fabric::is_fabric_installed,
 
             // Mods
             mods::search_modrinth,

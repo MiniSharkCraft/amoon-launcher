@@ -4,7 +4,7 @@ import {
   FolderOpen, Trash, ArrowsClockwise, MagnifyingGlass,
   FileText, FileCss, Archive, Folder, HardDrive,
   PuzzlePiece, Cube, SunHorizon, Globe, Terminal,
-  Warning, CheckCircle, X,
+  Warning, CheckCircle, X, Bug,
 } from "@phosphor-icons/react";
 import useStore from "../store";
 import { C } from "../constants/theme";
@@ -15,6 +15,7 @@ const TABS = [
   { id: "resourcepacks", label: "Resource Packs",  subdir: "resourcepacks", icon: <Cube        size={14} weight="duotone"/>, exts: ["zip"], dirs: false },
   { id: "saves",         label: "Worlds",          subdir: "saves",         icon: <Globe       size={14} weight="duotone"/>, exts: [], dirs: true },
   { id: "logs",          label: "Logs",            subdir: "logs",          icon: <Terminal    size={14} weight="duotone"/>, exts: ["log","gz","txt"], dirs: false },
+  { id: "crash-reports", label: "Crash Reports",  subdir: "crash-reports", icon: <Bug         size={14} weight="duotone"/>, exts: ["txt"], dirs: false },
 ];
 
 function fmtSize(bytes) {
@@ -41,7 +42,7 @@ export default function FileManagerPanel() {
   const { listDirFiles, deleteFile, openPath, readTextFile, installations, selectedInstall } = useStore();
 
   const inst    = installations.find(i => i.id === selectedInstall);
-  const gameDir = ".amoon";
+  const gameDir = inst?.gameDir ?? ".amoon";
 
   const [tab,      setTab]    = useState("mods");
   const [files,    setFiles]  = useState([]);
@@ -61,8 +62,8 @@ export default function FileManagerPanel() {
     const list = await listDirFiles(dirPath, activeTab.exts, activeTab.dirs);
     setFiles(list);
     setLoad(false);
-    // Auto-load first log file
-    if (tab === "logs" && list.length > 0 && !logFile) {
+    // Auto-load first log/crash file
+    if ((tab === "logs" || tab === "crash-reports") && list.length > 0 && !logFile) {
       const first = list.find(f => f.ext === "log") ?? list[0];
       setLogFile(first.path);
       const text = await readTextFile(first.path);
@@ -155,8 +156,8 @@ export default function FileManagerPanel() {
         </div>
       </div>
 
-      {/* Logs layout */}
-      {tab === "logs" ? (
+      {/* Logs / Crash Reports layout */}
+      {(tab === "logs" || tab === "crash-reports") ? (
         <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
           {/* File list sidebar */}
           <div style={{ width:220, borderRight:`1px solid ${C.border}`, overflowY:"auto", padding:8 }}>
